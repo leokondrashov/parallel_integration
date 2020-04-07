@@ -2,6 +2,7 @@
 
 for i in {1..8}
 do
-    perf stat ./integration $i
+    echo "./integration $i"
+    time ./integration $i > /dev/null
 done
 

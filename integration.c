@@ -1,13 +1,20 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <math.h>
 #include <errno.h>
 #include <sys/sysinfo.h>
+#include <sched.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <assert.h>
 
 #define DX 1e-9
 
 int handleInt(const char *str, int *num);
+void parseCPUmask(const char *buf, cpu_set_t *set);
 double integrate(double from, double to, double dx);
 void *threadRoutine(void *args);
 void *idleThread(void *args);
@@ -19,7 +26,6 @@ struct arg {
 };
 
 int main(int argc, char *argv[]) {
-	
 	if (argc == 1) {
 		printf("Missing argument\n");
 		return 1;
@@ -30,7 +36,18 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
-	int cpus = get_nprocs();
+	int cpus_conf = get_nprocs_conf();
+	char *buf = calloc(3 * cpus_conf, sizeof(char));
+	cpu_set_t *mask = (cpu_set_t *) calloc(1, sizeof(cpu_set_t));
+
+	int fd = open("/sys/devices/system/cpu/online", O_RDONLY);
+	read(fd, buf, 3 * cpus_conf);
+	close(fd);
+	
+	parseCPUmask(buf, mask);
+	free(buf);
+	
+	int cpus = CPU_COUNT(mask);
 	if (n > cpus) {
 		printf("Too much threads\n");
 	}
@@ -44,15 +61,29 @@ int main(int argc, char *argv[]) {
 	
 	for (int i = 1; i < n; i++) {
 		double x = floor(1.0 / n * i / DX) * DX;
+//		printf("%.10g\n", x);
 		args[i - 1].to = x;
 		args[i].from = x;
 	}
+
+	int cpu = 0;
+	cpu_set_t *set = calloc(1, sizeof(cpu_set_t));
 	
-	for (int i = 0; i < n ; i++) {
+	for (int i = 0; i < n; i++) {
+		while (!CPU_ISSET(cpu, mask)) {
+			cpu++;
+		}
+		
 		if (pthread_create(&(threads[i]), NULL, threadRoutine, (void *)(args + i)) != 0) {
 			printf("Failed to create threads\n");
 			exit(1);
 		}
+		
+		CPU_ZERO(set);
+		CPU_SET(cpu, set);
+		pthread_setaffinity_np(threads[i], sizeof(cpu_set_t), set);
+
+		cpu++;
 	}
 
 	for (int i = n; i < cpus; i++) {
@@ -75,7 +106,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	printf("%.9g\n", sum);
-
+	
+	free(mask);
 	free(args);
 	free(threads);
 }
@@ -83,6 +115,8 @@ int main(int argc, char *argv[]) {
 double f(double x);
 
 void *threadRoutine(void *args) {
+	assert(args);
+	
 	struct arg *arg = (struct arg *) args;
 	arg->res = integrate(arg->from, arg->to, DX);
 
@@ -105,6 +139,40 @@ double integrate(double from, double to, double dx) {
 		sum += (fprev + fcur) / 2 * dx;
 	}
 	return sum;
+}
+
+void parseCPUmask(const char *buf, cpu_set_t *set) {
+	assert(buf);
+	assert(set);
+
+	CPU_ZERO(set);
+	
+	const char *i = buf;
+	int cpu = 0;
+	char c = '\0';
+	int mov = 0;
+	
+	while (*i != '\0') {
+		sscanf(i, "%d%c%n", &cpu, &c, &mov);
+		i += mov;
+		
+		if (c == ',') {
+			CPU_SET(cpu, set);
+			continue;
+		}
+
+		if (c == '\0') {
+		        break;
+		}
+
+		int cpu_end = 0;
+		sscanf(i, "%d%c%n", &cpu_end, &c, &mov);
+		i += mov;
+		
+		for (; cpu <= cpu_end; cpu++) {
+			CPU_SET(cpu, set);
+		}
+	}
 }
 
 double f(double x) {
@@ -133,4 +201,3 @@ int handleInt(const char *str, int *num) {
 	}
 	return 0;
 }
-
