@@ -1,4 +1,4 @@
-CFLAGS=-g -Wall -pthread -lm
+CFLAGS=-std=c99 -g -Wall -pthread -lm
 
 .PHONY: all
 

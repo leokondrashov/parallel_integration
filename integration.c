@@ -13,6 +13,12 @@
 
 #define DX 1e-9
 
+int max(int a, int b) {
+	if (a > b)
+		return a;
+	return b;
+}
+
 int handleInt(const char *str, int *num);
 void parseCPUmask(const char *buf, cpu_set_t *set);
 double integrate(double from, double to, double dx);
@@ -48,13 +54,10 @@ int main(int argc, char *argv[]) {
 	free(buf);
 	
 	int cpus = CPU_COUNT(mask);
-	if (n > cpus) {
-		printf("Too much threads\n");
-	}
 	
         struct arg *args = (struct arg *) calloc(n, sizeof(struct arg));
 	
-	pthread_t *threads = (pthread_t *) calloc(cpus, sizeof(pthread_t));
+	pthread_t *threads = (pthread_t *) calloc(max(cpus, n), sizeof(pthread_t));
 	
 	args[0].from = 0.0;
 	args[n - 1].to = 1.0;
@@ -71,7 +74,7 @@ int main(int argc, char *argv[]) {
 	
 	for (int i = 0; i < n; i++) {
 		while (!CPU_ISSET(cpu, mask)) {
-			cpu++;
+			cpu = (cpu + 1) % cpus_conf;
 		}
 		
 		if (pthread_create(&(threads[i]), NULL, threadRoutine, (void *)(args + i)) != 0) {
@@ -81,15 +84,14 @@ int main(int argc, char *argv[]) {
 		
 		CPU_ZERO(set);
 		CPU_SET(cpu, set);
-		pthread_setaffinity_np(threads[i], sizeof(cpu_set_t), set);
-
+		pthread_setaffinity_np(threads[i], sizeof(cpu_set_t), set);		
 		cpu++;
 	}
 
 	for (int i = n; i < cpus; i++) {
 		if (pthread_create(&(threads[i]), NULL, idleThread, NULL)) {
 			printf("Failed to create threads\n");
-			exit(1);
+			return 1;
 		}
 	}
 	
@@ -106,7 +108,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	printf("%.9g\n", sum);
-	
+
+	free(set);
 	free(mask);
 	free(args);
 	free(threads);
