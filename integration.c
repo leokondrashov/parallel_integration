@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (n == 1) {
-		sleep(1);
+//		sleep(1);
 	}
 	
 	int cpu = 0;
@@ -96,7 +96,9 @@ int main(int argc, char *argv[]) {
 		
 		CPU_ZERO(set);
 		CPU_SET(cpu, set);
-		pthread_setaffinity_np(threads[i], sizeof(cpu_set_t), set);		
+		if (n <= cpus_conf) {
+			pthread_setaffinity_np(threads[i], sizeof(cpu_set_t), set);
+		}
 		cpu++;
 	}
 	
@@ -126,7 +128,19 @@ void *threadRoutine(void *args) {
 	assert(args);
 	
 	struct arg *arg = (struct arg *) args;
-	arg->res = integrate(arg->from, arg->to, DX);
+
+	double from = arg->from;
+	double to = arg->to;
+	
+	double sum = 0;
+	double fcur = f(from);
+	double fprev = 0;
+	for (double x = from; x <= to; x += DX) {
+	        fprev = fcur;
+		fcur = f(x);
+		sum += (fprev + fcur) / 2 * DX;
+	}
+	arg->res = sum;
 
 	return NULL;
 }
@@ -135,18 +149,6 @@ void *idleThread(void *args) {
 	for (;;);
 
 	return NULL;
-}
-
-double integrate(double from, double to, double dx) {
-	double sum = 0;
-	double fcur = f(from);
-	double fprev = 0;
-	for (double x = from; x <= to; x += dx) {
-	        fprev = fcur;
-		fcur = f(x);
-		sum += (fprev + fcur) / 2 * dx;
-	}
-	return sum;
 }
 
 void parseCPUmask(const char *buf, cpu_set_t *set) {
