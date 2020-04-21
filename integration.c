@@ -69,6 +69,18 @@ int main(int argc, char *argv[]) {
 		args[i].from = x;
 	}
 
+	
+	for (int i = n; i < cpus; i++) {
+		if (pthread_create(&(threads[i]), NULL, idleThread, NULL)) {
+			printf("Failed to create threads\n");
+			return 1;
+		}
+	}
+
+	if (n == 1) {
+		sleep(1);
+	}
+	
 	int cpu = 0;
 	cpu_set_t *set = calloc(1, sizeof(cpu_set_t));
 	
@@ -86,13 +98,6 @@ int main(int argc, char *argv[]) {
 		CPU_SET(cpu, set);
 		pthread_setaffinity_np(threads[i], sizeof(cpu_set_t), set);		
 		cpu++;
-	}
-
-	for (int i = n; i < cpus; i++) {
-		if (pthread_create(&(threads[i]), NULL, idleThread, NULL)) {
-			printf("Failed to create threads\n");
-			return 1;
-		}
 	}
 	
 	for (int i = 0; i < n; i++) {
